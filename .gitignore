@@ -16,3 +16,5 @@ Budget_Portal.html
 # Claude tooling
 .claude/
 memory/
+
+.vercel
