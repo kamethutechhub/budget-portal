@@ -1,0 +1,18 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+.vscode/
+.idea/
+
+# Local-only binaries (keep the HTML + PWA files in the repo)
+IMG_*.jpg
+*.pdf
+
+# Duplicate portal (index.html is the canonical copy)
+Budget_Portal.html
+
+# Claude tooling
+.claude/
+memory/
