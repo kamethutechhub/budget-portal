@@ -356,6 +356,32 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
 <body>
 <a href="#main-content" class="skip-link">Skip to main content</a>
 
+<!-- LOGIN GATE -->
+<div class="landing-overlay hidden" id="login-overlay" role="dialog" aria-label="Sign in" aria-modal="true">
+  <div class="landing-card" style="max-width:440px">
+    <div class="landing-hero">
+      <h1 id="login-title">Budget Tracker</h1>
+      <p id="login-sub">Enter your password to continue.</p>
+    </div>
+    <div class="landing-body">
+      <label for="login-pw">Password</label>
+      <input id="login-pw" type="password" autocomplete="current-password">
+      <div id="login-pw2-wrap" style="display:none">
+        <label for="login-pw2">Confirm password</label>
+        <input id="login-pw2" type="password" autocomplete="new-password">
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-weight:400">
+        <input type="checkbox" id="login-remember" checked style="width:auto"> Remember me for 30 days
+      </label>
+      <div id="login-error" role="alert" style="color:var(--over);font-size:12px;margin-top:10px;display:none"></div>
+    </div>
+    <div class="landing-actions">
+      <div class="left"><button class="skip" id="login-reset">Forgot? Wipe data</button></div>
+      <div><button class="next" id="login-submit">Unlock</button></div>
+    </div>
+  </div>
+</div>
+
 <!-- LANDING / ONBOARDING -->
 <div class="landing-overlay hidden" id="landing" role="dialog" aria-label="Welcome wizard">
   <div class="landing-card">
@@ -544,6 +570,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
       <tr><td>Your name</td><td><input id="s-name" type="text" placeholder="(not set)"></td></tr>
       <tr><td>Savings target (%)</td><td><input id="s-savings" type="number" min="0" max="100"></td></tr>
       <tr><td></td><td><button class="btn ghost" id="s-reonboard">Re-run onboarding</button> <button class="btn ghost" id="s-clear-profile" style="color:#c0392b;border-color:#c0392b">Reset profile</button></td></tr>
+      <tr><td>Security</td><td><button class="btn ghost" id="s-change-pw">Change password</button> <button class="btn ghost" id="s-logout">Log out</button></td></tr>
       <tr><td>Backup</td><td><button class="btn ghost" id="s-export-json">Export all data (JSON)</button> <button class="btn ghost" id="s-import-json">Import backup</button> <input type="file" id="s-import-file" hidden accept=".json"></td></tr>
     </table>
   </div>
@@ -2369,6 +2396,23 @@ function bindProfileSettings(){
     download(`budget_portal_backup_${new Date().toISOString().slice(0,10)}.json`, JSON.stringify(payload, null, 2), "application/json");
   });}
   if (impEl && !impEl.__bound) { impEl.__bound = true; impEl.addEventListener("click", () => impFile.click()); }
+  const pwEl = document.getElementById("s-change-pw");
+  const outEl = document.getElementById("s-logout");
+  if (pwEl && !pwEl.__bound) { pwEl.__bound = true; pwEl.addEventListener("click", async () => {
+    const cur = prompt("Current password:"); if (cur === null) return;
+    if (!(await authCheck(cur))) return alert("Incorrect current password.");
+    const nw = prompt("New password (min 4 chars):"); if (nw === null) return;
+    if (!nw || nw.length < 4) return alert("Password must be at least 4 characters.");
+    const conf = prompt("Confirm new password:"); if (conf === null) return;
+    if (nw !== conf) return alert("Passwords don't match.");
+    await authSetPassword(nw);
+    alert("Password updated.");
+  });}
+  if (outEl && !outEl.__bound) { outEl.__bound = true; outEl.addEventListener("click", () => {
+    if (!confirm("Log out? You'll need to enter your password next time.")) return;
+    authEndSession();
+    location.reload();
+  });}
   if (impFile && !impFile.__bound) { impFile.__bound = true; impFile.addEventListener("change", async e => {
     const f = e.target.files[0]; if (!f) return;
     if (!confirm(`Replace all data with "${f.name}"? Current state will be overwritten.`)) { e.target.value=""; return; }
@@ -2397,6 +2441,74 @@ if (_savedState) {
   if (ind && _savedState.savedAt) ind.textContent = "Restored " + new Date(_savedState.savedAt).toLocaleString([], {month:"short", day:"numeric", hour:"2-digit", minute:"2-digit"});
 }
 if (!_profile) openWizard(null);
+
+// ============================================================
+// AUTH (password gate — client-side)
+// ============================================================
+const AUTH_KEY = "budgetPortalAuth_v1";
+const SESSION_KEY = "budgetPortalSession_v1";
+async function sha256(text){ const buf = new TextEncoder().encode(text); const h = await crypto.subtle.digest("SHA-256", buf); return Array.from(new Uint8Array(h)).map(b=>b.toString(16).padStart(2,"0")).join(""); }
+function authHasPassword(){ return !!localStorage.getItem(AUTH_KEY); }
+async function authSetPassword(pw){ localStorage.setItem(AUTH_KEY, JSON.stringify({hash: await sha256(pw), createdAt: Date.now()})); }
+async function authCheck(pw){ const stored = JSON.parse(localStorage.getItem(AUTH_KEY)||"null"); if (!stored) return false; return await sha256(pw) === stored.hash; }
+function authStartSession(days){ localStorage.setItem(SESSION_KEY, JSON.stringify({expiresAt: Date.now()+days*86400000})); }
+function authSessionValid(){ const s = JSON.parse(localStorage.getItem(SESSION_KEY)||"null"); return !!(s && s.expiresAt > Date.now()); }
+function authEndSession(){ localStorage.removeItem(SESSION_KEY); }
+
+(function(){
+  const $ov = document.getElementById("login-overlay");
+  const $pw = document.getElementById("login-pw");
+  const $pw2 = document.getElementById("login-pw2");
+  const $pw2Wrap = document.getElementById("login-pw2-wrap");
+  const $sub = document.getElementById("login-sub");
+  const $title = document.getElementById("login-title");
+  const $submit = document.getElementById("login-submit");
+  const $reset = document.getElementById("login-reset");
+  const $remember = document.getElementById("login-remember");
+  const $error = document.getElementById("login-error");
+
+  if (authSessionValid()) return; // already authed
+
+  $ov.classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+  // Hide sensitive view content until unlocked
+  const main = document.querySelector("main.main"); if (main) main.style.visibility = "hidden";
+
+  const isSetup = !authHasPassword();
+  if (isSetup) {
+    $title.textContent = "Create your password";
+    $sub.textContent = "This unlocks your budget portal. Write it down — there is no recovery.";
+    $pw2Wrap.style.display = "";
+    $submit.textContent = "Set password";
+  }
+  setTimeout(() => $pw.focus(), 50);
+
+  async function submit(){
+    $error.style.display = "none";
+    const pw = $pw.value;
+    if (!pw) { $error.textContent = "Enter a password."; $error.style.display = "block"; return; }
+    if (isSetup) {
+      if (pw.length < 4) { $error.textContent = "Use at least 4 characters."; $error.style.display = "block"; return; }
+      if (pw !== $pw2.value) { $error.textContent = "Passwords don't match."; $error.style.display = "block"; return; }
+      await authSetPassword(pw);
+    } else {
+      const ok = await authCheck(pw);
+      if (!ok) { $error.textContent = "Incorrect password."; $error.style.display = "block"; $pw.value = ""; $pw.focus(); return; }
+    }
+    if ($remember.checked) authStartSession(30); else authStartSession(1);
+    $ov.classList.add("hidden");
+    document.body.style.overflow = "";
+    if (main) main.style.visibility = "";
+  }
+  $submit.addEventListener("click", submit);
+  [$pw, $pw2].forEach(el => el.addEventListener("keydown", e => { if (e.key === "Enter") submit(); }));
+  $reset.addEventListener("click", () => {
+    if (!confirm("Wipe all local data (password, budget, transactions) from this browser? This cannot be undone.")) return;
+    if (!confirm("Final warning — really wipe everything?")) return;
+    localStorage.clear();
+    location.reload();
+  });
+})();
 
 // Sidebar collapse toggle
 (function(){
