@@ -2553,10 +2553,22 @@ document.addEventListener("keydown", e => {
 // Safe because persistState() only snapshots S; it doesn't read from the DOM.
 ["input","change","click"].forEach(ev => document.body.addEventListener(ev, () => persistState(), true));
 
-// Register service worker (PWA offline + installable)
+// Register service worker (PWA offline + installable). Auto-reload when a new SW takes over.
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
+  let _reloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (_reloaded) return; _reloaded = true; location.reload();
+  });
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("service-worker.js").catch(() => {});
+    navigator.serviceWorker.register("service-worker.js").then(reg => {
+      reg.update();
+      reg.addEventListener("updatefound", () => {
+        const nw = reg.installing; if (!nw) return;
+        nw.addEventListener("statechange", () => {
+          if (nw.state === "installed" && navigator.serviceWorker.controller) nw.postMessage({type: "SKIP_WAITING"});
+        });
+      });
+    }).catch(() => {});
   });
 }
 

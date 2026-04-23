@@ -4,7 +4,7 @@
 //   CDN (chart.js, xlsx, tesseract, fonts): stale-while-revalidate
 //   Everything else: network-only
 // Bump CACHE_NAME to force all clients to refresh the shell.
-const CACHE_NAME = "budget-portal-v1";
+const CACHE_NAME = "budget-portal-v2-auth";
 const SHELL = [
   "./",
   "./index.html",
@@ -19,6 +19,10 @@ self.addEventListener("install", event => {
       .then(c => c.addAll(SHELL))
       .then(() => self.skipWaiting())
   );
+});
+
+self.addEventListener("message", event => {
+  if (event.data && event.data.type === "SKIP_WAITING") self.skipWaiting();
 });
 
 self.addEventListener("activate", event => {
