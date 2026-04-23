@@ -4,7 +4,7 @@
 //   CDN (chart.js, xlsx, tesseract, fonts): stale-while-revalidate
 //   Everything else: network-only
 // Bump CACHE_NAME to force all clients to refresh the shell.
-const CACHE_NAME = "budget-portal-v2-auth";
+const CACHE_NAME = "budget-portal-v3-mobile";
 const SHELL = [
   "./",
   "./index.html",
